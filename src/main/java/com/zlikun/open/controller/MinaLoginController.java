@@ -2,23 +2,20 @@ package com.zlikun.open.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.hash.Hashing;
-import lombok.Data;
+import com.zlikun.open.constant.AppConsts;
+import com.zlikun.open.dto.WxInfoDto;
+import com.zlikun.open.service.WxInfoService;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.FormBody;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.util.DigestUtils;
 import org.springframework.web.bind.annotation.*;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 
 /**
  * 微信小程序登录控制器（REST API）
@@ -33,43 +30,14 @@ public class MinaLoginController {
 
     @Autowired
     private ObjectMapper mapper;
-
+    @Autowired
+    private WxInfoService wxInfoService;
+    @Autowired
     private OkHttpClient client;
 
-    // 仅供测试，根据 session_key + openid 生成 token，用于标识微信用户
-    private final ConcurrentHashMap<String, WxInfo> storage = new ConcurrentHashMap<>();
-
-    @Data
-    private static class WxInfo {
-        private String sessionKey;
-        private String openId;
-        private String unionId;
-
-        /**
-         * 计算Token值
-         *
-         * @return
-         */
-        public String getToken() {
-            return DigestUtils.md5DigestAsHex((this.openId + ":" + this.sessionKey).getBytes());
-        }
-    }
-
-    @PostConstruct
-    public void init() {
-        client = new OkHttpClient.Builder()
-                .connectTimeout(1500, TimeUnit.MILLISECONDS)
-                .build();
-    }
-
-    @PreDestroy
-    public void destroy() {
-
-    }
-
     private String wxUrl = "https://api.weixin.qq.com/sns/jscode2session";
-    private String appId = "wx2bf382e1bd59b866";
-    private String appSecret = "f360720dce9aa1fe5674bec87452a452";
+    private String appId = AppConsts.APP_ID;
+    private String appSecret = AppConsts.APP_SECRET;
     private String grantType = "authorization_code";
 
     /**
@@ -119,12 +87,10 @@ public class MinaLoginController {
                 // openid, session_key[, unionid]
                 // errcode, errmsg
                 if (data.get("openid") != null) {
-                    WxInfo info = new WxInfo();
+                    WxInfoDto info = new WxInfoDto();
                     info.setOpenId(data.get("openid"));
                     info.setSessionKey(data.get("session_key"));
-                    String token = info.getToken();
-                    storage.put(token, info);
-                    return token;
+                    return wxInfoService.putWxInfo(info);
                 }
 
             }
@@ -148,10 +114,10 @@ public class MinaLoginController {
     @PostMapping("/verify_signature")
     public Object doSignature(String token, String signature, String userRawInfo) {
         // 获取session_key，这里暂时不考虑未登录这种情况
-        String sessionKey = storage.get(token).getSessionKey();
+        String sessionKey = wxInfoService.getWxInfo(token).getSessionKey();
         // 这里使用的是Guava提供的SHA算法工具类
         String signature2 = Hashing.sha1().hashBytes((userRawInfo + sessionKey).getBytes()).toString();
-        log.info("session_key = {}, signature = {}, signature2 = {}" ,sessionKey, signature, signature2);
+        log.info("session_key = {}, signature = {}, signature2 = {}", sessionKey, signature, signature2);
         // 比较两个签名一致性
         return signature.equals(signature2);
     }
@@ -165,7 +131,7 @@ public class MinaLoginController {
     @GetMapping("/logic")
     public Object doLogic(String token) {
         Map<String, Object> data = new HashMap<>(4);
-        if (storage.containsKey(token)) {
+        if (wxInfoService.hasToken(token)) {
             data.put("status", 1);  // 表示正常
         } else {
             data.put("status", -1); // 表示未登录（认证）
