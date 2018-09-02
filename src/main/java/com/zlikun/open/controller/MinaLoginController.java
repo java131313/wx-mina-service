@@ -1,6 +1,7 @@
 package com.zlikun.open.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.hash.Hashing;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.FormBody;
@@ -9,10 +10,7 @@ import okhttp3.Request;
 import okhttp3.Response;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.DigestUtils;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
@@ -136,6 +134,26 @@ public class MinaLoginController {
         }
 
         return null;
+    }
+
+    /**
+     * 对wx.getUserInfo()返回的用户数据进行校验
+     * https://developers.weixin.qq.com/miniprogram/dev/api/signature.html
+     *
+     * @param token       登录凭证
+     * @param signature   wx.getUserInfo()返回的签名
+     * @param userRawInfo wx.getUserInfo()返回的用户信息原文
+     * @return
+     */
+    @PostMapping("/verify_signature")
+    public Object doSignature(String token, String signature, String userRawInfo) {
+        // 获取session_key，这里暂时不考虑未登录这种情况
+        String sessionKey = storage.get(token).getSessionKey();
+        // 这里使用的是Guava提供的SHA算法工具类
+        String signature2 = Hashing.sha1().hashBytes((userRawInfo + sessionKey).getBytes()).toString();
+        log.info("session_key = {}, signature = {}, signature2 = {}" ,sessionKey, signature, signature2);
+        // 比较两个签名一致性
+        return signature.equals(signature2);
     }
 
     /**
