@@ -103,6 +103,66 @@ public class MinaLoginController {
     }
 
     /**
+     * 第三方授权小程序登录<br>
+     * https://open.weixin.qq.com/cgi-bin/showdocument?action=dir_list&t=resource/res_list&verify=1&id=open1492585163_FtTNA&token=4316480ffc0c8bbc87fc81a9197f62a2d5baa1c6&lang=zh_CN
+     *
+     * @param code
+     * @return
+     */
+    public Object doLogin2(String code) {
+
+        // 除了该API（URL及参数）不同，后续流程都是一样的
+        String authorizerAppid = "";
+        String componentAppId = "";
+        String componentAccessToken = "";
+        Request request = new Request.Builder()
+                .url(wxUrl)
+                .post(new FormBody.Builder()
+                        .add("appid", authorizerAppid)
+                        .add("js_code", code)
+                        .add("grant_type", grantType)
+                        .add("component_appid", componentAppId)
+                        .add("component_access_token", componentAccessToken)
+                        .build())
+                .build();
+
+        // 后面就都是一样的了
+        try {
+            Response response = client.newCall(request).execute();
+
+            if (response.isSuccessful()) {
+
+                String content = response.body().string();
+
+                // content = {"session_key":"HZ2UFIR5OS98yYP1GKJSbg==","openid":"o3i0p6BNEVUVCok4Vl4QLljHjVbY"}
+                log.info("content = {}", content);
+
+                // 提取session_key和openid字段
+                Map<String, String> data = mapper.readValue(content, Map.class);
+
+                // data = {session_key=HZ2UFIR5OS98yYP1GKJSbg==, openid=o3i0p6BNEVUVCok4Vl4QLljHjVbY}
+                log.info("data = {}", data);
+
+                // 判断data容器中的字段
+                // openid, session_key[, unionid]
+                // errcode, errmsg
+                if (data.get("openid") != null) {
+                    WxInfoDto info = new WxInfoDto();
+                    info.setOpenId(data.get("openid"));
+                    info.setSessionKey(data.get("session_key"));
+                    return wxInfoService.putWxInfo(info);
+                }
+
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return null;
+    }
+
+    /**
      * 对wx.getUserInfo()返回的用户数据进行校验
      * https://developers.weixin.qq.com/miniprogram/dev/api/signature.html
      *
@@ -120,23 +180,6 @@ public class MinaLoginController {
         log.info("session_key = {}, signature = {}, signature2 = {}", sessionKey, signature, signature2);
         // 比较两个签名一致性
         return signature.equals(signature2);
-    }
-
-    /**
-     * 模拟一个业务API，接收Token用于认证
-     *
-     * @param token
-     * @return
-     */
-    @GetMapping("/logic")
-    public Object doLogic(String token) {
-        Map<String, Object> data = new HashMap<>(4);
-        if (wxInfoService.hasToken(token)) {
-            data.put("status", 1);  // 表示正常
-        } else {
-            data.put("status", -1); // 表示未登录（认证）
-        }
-        return data;
     }
 
 }
